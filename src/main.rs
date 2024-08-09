@@ -1,3 +1,4 @@
+use normalize_path::NormalizePath;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
@@ -39,13 +40,17 @@ fn add_parsed_arguments(data: &mut IndexSet<String>, home: &str, pwd: &str, inpu
                 fullarg.push_str(&arg);
             }
 
-            // Append the fullpath only if the path exists
-            if Path::new(&fullarg).exists() {
-                if data.contains(&fullarg) {
-                    data.shift_remove(&fullarg);
+            // Append the normalized fullpath only if the file exists
+            let path = Path::new(&fullarg);
+            let norm_path = path.normalize();
+            if let Some(norm_str) = norm_path.to_str() {
+                if norm_path.exists() && norm_path.is_file() {
+                    if data.contains(norm_str) {
+                        data.shift_remove(norm_str);
+                    }
+                    data.insert(norm_str.to_string());
+                    updated += 1;
                 }
-                data.insert(fullarg);
-                updated += 1;
             }
         }
     }
