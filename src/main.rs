@@ -9,7 +9,7 @@ use regex::Regex;
 const LIMIT: usize = 1000;
 const DATA_FILENAME: &str = ".recent.txt";
 
-fn add_parsed_arguments(data: &mut IndexSet<String>, home: &str, pwd: &str, input: &str) -> u32 {
+fn add_parsed_arguments(data: &mut IndexSet<String>, datafile: &str, home: &str, pwd: &str, input: &str) -> u32 {
     let re = Regex::new(r#""((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)"#).unwrap();
 
     let mut cnt = 0;
@@ -44,6 +44,10 @@ fn add_parsed_arguments(data: &mut IndexSet<String>, home: &str, pwd: &str, inpu
             let path = Path::new(&fullarg);
             let norm_path = path.normalize();
             if let Some(norm_str) = norm_path.to_str() {
+                if norm_str.eq(datafile) {
+                    // ignore the data file itself
+                    continue;
+                }
                 if norm_path.exists() && norm_path.is_file() {
                     if data.contains(norm_str) {
                         data.shift_remove(norm_str);
@@ -83,7 +87,7 @@ fn main() {
         _ => { },
     };
 
-    if add_parsed_arguments(&mut data, &home, &pwd, &cmd) == 0 {
+    if add_parsed_arguments(&mut data, &filename, &home, &pwd, &cmd) == 0 {
         return;
     }
 
