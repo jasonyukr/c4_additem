@@ -6,7 +6,7 @@ use std::path::Path;
 use indexmap::IndexSet;
 use regex::Regex;
 
-const LIMIT: usize = 1000;
+const LIMIT: usize = 10000;
 const DATA_FILENAME: &str = ".recent.txt";
 
 fn add_parsed_arguments(data: &mut IndexSet<String>, datafile: &str, home: &str, pwd: &str, input: &str) -> u32 {
