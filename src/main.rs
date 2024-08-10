@@ -56,7 +56,7 @@ fn add_parsed_arguments(data: &mut IndexSet<String>, datafile: &str, home: &str,
                         }
                     }
                 },
-                _ => {},
+                _ => { },
             }
         }
     }
@@ -109,4 +109,3 @@ fn main() {
         let _ = writer.flush();
     }
 }
-
