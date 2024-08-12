@@ -7,7 +7,7 @@ use regex::Regex;
 const LIMIT: usize = 10000;
 const DATA_FILENAME: &str = ".recent.txt";
 
-fn add_parsed_arguments(data: &mut IndexSet<String>, datafile: &str, home: &str, pwd: &str, input: &str) -> u32 {
+fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home: &str, pwd: &str, input: &str, new_data: &mut IndexSet<String>) -> u32 {
     let re = Regex::new(r#""((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)"#).unwrap();
 
     let mut cnt = 0;
@@ -16,12 +16,17 @@ fn add_parsed_arguments(data: &mut IndexSet<String>, datafile: &str, home: &str,
         if let Some(m) = cap.get(1).or_else(|| cap.get(2)).or_else(|| cap.get(3)) {
             let arg = m.as_str().replace(r#"\ "#, " ");
 
-            // Filter out the command itself and the option parameters like "--color"
             cnt += 1;
             if cnt == 1 {
+                // ignore the command itself
                 continue;
             }
             if arg.starts_with('-') {
+                // ignore option parameters like "--color"
+                continue;
+            }
+            if arg.starts_with("/dev/") {
+                // ignore the device driver access
                 continue;
             }
 
@@ -48,10 +53,10 @@ fn add_parsed_arguments(data: &mut IndexSet<String>, datafile: &str, home: &str,
                         }
                         // exists() is double-checking as canonalized() is basically for existing file
                         if path.exists() && path.is_file() {
-                            if data.contains(cano_str) {
-                                data.shift_remove(cano_str);
+                            if loaded_data.contains(cano_str) {
+                                loaded_data.shift_remove(cano_str);
                             }
-                            data.insert(cano_str.to_string());
+                            new_data.insert(cano_str.to_string());
                             updated += 1;
                         }
                     }
@@ -76,35 +81,44 @@ fn main() {
     }
 
     // Load the data file
-    let mut data = IndexSet::new();
+    let mut new_data = IndexSet::new();
+    let mut loaded_data = IndexSet::new();
     let file = File::open(&filename);
     match file {
         Ok(file) => {
             let reader = BufReader::new(file);
             for (_, line) in reader.lines().enumerate() {
                 let line = line.unwrap();
-                data.insert(line);
+                loaded_data.insert(line);
             }
         },
         _ => { },
     };
 
-    if add_parsed_arguments(&mut data, &filename, &home, &pwd, &cmd) == 0 {
+    if add_parsed_arguments(&mut loaded_data, &filename, &home, &pwd, &cmd, &mut new_data) == 0 || new_data.len() == 0 {
         return;
     }
 
-    // Keep the max size of the IndexSet
-    if data.len() > LIMIT {
-        let diff = data.len() - LIMIT;
-        data.drain(..diff);
-    }
-
-    // Save the updated data file
+    // Save the updated data file (new_data + loaded_data) and keep the LIMIT
     if let Ok(file) = File::create(&filename) {
         let mut writer = BufWriter::new(&file);
-        for arg in data {
+        let new_data_len = new_data.len();
+        for arg in new_data {
             let _ = writer.write(arg.as_bytes());
             let _ = writer.write("\n".as_bytes());
+        }
+        if new_data_len < LIMIT {
+            let mut loaded_data_len = loaded_data.len();
+            if new_data_len + loaded_data_len > LIMIT {
+                loaded_data_len = LIMIT - new_data_len;
+            }
+            for (i, arg) in loaded_data.iter().enumerate() {
+                if i >= loaded_data_len {
+                    break;
+                }
+                let _ = writer.write(arg.as_bytes());
+                let _ = writer.write("\n".as_bytes());
+            }
         }
         let _ = writer.flush();
     }
