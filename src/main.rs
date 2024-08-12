@@ -19,8 +19,11 @@ fn parse_line(input: &str) -> Vec<String> {
         if escape {
             if c == ' ' {
                 current_token.push(' ');
+            } else if c == '\'' {
+                current_token.push('\'');
+            } else if c == '"' {
+                current_token.push('"');
             } else {
-                current_token.push('\\');
                 current_token.push(c);
             }
             escape = false;
