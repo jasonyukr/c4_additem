@@ -2,67 +2,111 @@ use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
 use indexmap::IndexSet;
-use regex::Regex;
 
 const LIMIT: usize = 10000;
 const DATA_FILENAME: &str = ".recent.txt";
 
+fn parse_line(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current_token = String::new();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escape = false;
+
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if escape {
+            if c == ' ' {
+                current_token.push(' ');
+            } else {
+                current_token.push('\\');
+                current_token.push(c);
+            }
+            escape = false;
+        } else if c == '\\' {
+            escape = true;
+        } else if c == '"' {
+            in_double_quote = !in_double_quote;
+            if !in_double_quote && !in_single_quote {
+                tokens.push(current_token.trim().to_string());
+                current_token.clear();
+            }
+        } else if c == '\'' {
+            in_single_quote = !in_single_quote;
+            if !in_single_quote && !in_double_quote {
+                tokens.push(current_token.trim().to_string());
+                current_token.clear();
+            }
+        } else if c == ' ' && !in_single_quote && !in_double_quote {
+            if !current_token.is_empty() {
+                tokens.push(current_token.trim().to_string());
+                current_token.clear();
+            }
+        } else {
+            current_token.push(c);
+        }
+    }
+
+    if !current_token.trim().is_empty() {
+        tokens.push(current_token.trim().to_string());
+    }
+
+    tokens
+}
+
 fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home: &str, pwd: &str, input: &str, new_data: &mut IndexSet<String>) -> u32 {
-    let re = Regex::new(r#""((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)"#).unwrap();
+    let token_list = parse_line(input);
 
     let mut cnt = 0;
     let mut updated = 0;
-    for cap in re.captures_iter(input) {
-        if let Some(m) = cap.get(1).or_else(|| cap.get(2)).or_else(|| cap.get(3)) {
-            let arg = m.as_str().replace(r#"\ "#, " ");
+    for arg in token_list {
+        cnt += 1;
+        if cnt == 1 {
+            // ignore the command itself
+            continue;
+        }
+        if arg.starts_with('-') {
+            // ignore option parameters like "--color"
+            continue;
+        }
+        if arg.starts_with("/dev/") {
+            // ignore the device driver access
+            continue;
+        }
 
-            cnt += 1;
-            if cnt == 1 {
-                // ignore the command itself
-                continue;
-            }
-            if arg.starts_with('-') {
-                // ignore option parameters like "--color"
-                continue;
-            }
-            if arg.starts_with("/dev/") {
-                // ignore the device driver access
-                continue;
-            }
+        // Compose the fullpath with the path expansion
+        let mut fullarg: String;
+        if arg.starts_with("~/") {
+            fullarg = home.to_string();
+            fullarg.push_str(&arg[1..]);
+        } else if arg.starts_with('/') {
+            fullarg = arg;
+        } else {
+            fullarg = pwd.to_string();
+            fullarg.push_str("/");
+            fullarg.push_str(&arg);
+        }
 
-            // Compose the fullpath with the path expansion
-            let mut fullarg: String;
-            if arg.starts_with("~/") {
-                fullarg = home.to_string();
-                fullarg.push_str(&arg[1..]);
-            } else if arg.starts_with('/') {
-                fullarg = arg;
-            } else {
-                fullarg = pwd.to_string();
-                fullarg.push_str("/");
-                fullarg.push_str(&arg);
-            }
-
-            // Append the canonalized fullpath only if the file exists
-            match fs::canonicalize(&fullarg) {
-                Ok(path) => {
-                    if let Some(cano_str) = path.to_str() {
-                        if cano_str.eq(datafile) {
-                            // ignore the data file itself
-                            continue;
-                        }
-                        // exists() is double-checking as canonalized() is basically for existing file
-                        if path.exists() && path.is_file() {
-                            if loaded_data.contains(cano_str) {
-                                loaded_data.shift_remove(cano_str);
-                            }
-                            new_data.insert(cano_str.to_string());
-                            updated += 1;
-                        }
+        // Append the canonalized fullpath only if the file exists
+        match fs::canonicalize(&fullarg) {
+            Ok(path) => {
+                if let Some(cano_str) = path.to_str() {
+                    if cano_str.eq(datafile) {
+                        // ignore the data file itself
+                        continue;
                     }
-                },
-                _ => { },
-            }
+                    // exists() is double-checking as canonalized() is basically for existing file
+                    if path.exists() && path.is_file() {
+                        if loaded_data.contains(cano_str) {
+                            loaded_data.shift_remove(cano_str);
+                        }
+                        new_data.insert(cano_str.to_string());
+                        updated += 1;
+                    }
+                }
+            },
+            _ => { },
         }
     }
     updated
