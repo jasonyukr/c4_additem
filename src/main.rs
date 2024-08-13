@@ -66,8 +66,10 @@ fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home
     for arg in token_list {
         cnt += 1;
         if cnt == 1 {
-            // ignore the command itself
-            continue;
+            if !arg.starts_with("./") && !arg.starts_with("../") {
+                // ignore the command itself if the command doesn't start with "."
+                continue;
+            }
         }
         if arg.starts_with('-') {
             // ignore option parameters like "--color"
