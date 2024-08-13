@@ -102,12 +102,21 @@ fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home
                         continue;
                     }
                     // exists() is double-checking as canonalized() is basically for existing file/dir
-                    if path.exists() { // && path.is_file() {
-                        if loaded_data.contains(cano_str) {
-                            loaded_data.shift_remove(cano_str);
+                    if path.exists() {
+                        if path.is_file() {
+                            if loaded_data.contains(cano_str) {
+                                loaded_data.shift_remove(cano_str);
+                            }
+                            new_data.insert(cano_str.to_string());
+                            updated += 1;
+                        } else if path.as_path().is_dir() {
+                            let dir_cano_str = format!("{}/", cano_str);
+                            if loaded_data.contains(&dir_cano_str) {
+                                loaded_data.shift_remove(&dir_cano_str);
+                            }
+                            new_data.insert(dir_cano_str.to_string());
+                            updated += 1;
                         }
-                        new_data.insert(cano_str.to_string());
-                        updated += 1;
                     }
                 }
             },
