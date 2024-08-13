@@ -3,7 +3,7 @@ use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
 use indexmap::IndexSet;
 
-const LIMIT: usize = 10000;
+const LIMIT: usize = 20000;
 const DATA_FILENAME: &str = ".recent.txt";
 
 fn parse_line(input: &str) -> Vec<String> {
@@ -101,8 +101,8 @@ fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home
                         // ignore the data file itself
                         continue;
                     }
-                    // exists() is double-checking as canonalized() is basically for existing file
-                    if path.exists() && path.is_file() {
+                    // exists() is double-checking as canonalized() is basically for existing file/dir
+                    if path.exists() { // && path.is_file() {
                         if loaded_data.contains(cano_str) {
                             loaded_data.shift_remove(cano_str);
                         }
