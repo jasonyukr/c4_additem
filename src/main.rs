@@ -105,6 +105,13 @@ fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home
                     if path.exists() {
                         if path.is_file() {
                             if loaded_data.contains(cano_str) {
+                                if let Some(first) = loaded_data.iter().next() {
+                                    if first == cano_str {
+                                        // No reason to update the data file if the first item (most recent item)
+                                        // is already the same with new item.
+                                        continue;
+                                    }
+                                }
                                 loaded_data.shift_remove(cano_str);
                             }
                             new_data.insert(cano_str.to_string());
@@ -112,6 +119,13 @@ fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home
                         } else if path.as_path().is_dir() {
                             let dir_cano_str = format!("{}/", cano_str);
                             if loaded_data.contains(&dir_cano_str) {
+                                if let Some(first) = loaded_data.iter().next() {
+                                    if first == &dir_cano_str {
+                                        // No reason to update the data file if the first item (most recent item)
+                                        // is already the same with new item.
+                                        continue;
+                                    }
+                                }
                                 loaded_data.shift_remove(&dir_cano_str);
                             }
                             new_data.insert(dir_cano_str.to_string());
