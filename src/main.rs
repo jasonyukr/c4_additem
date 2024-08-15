@@ -1,3 +1,4 @@
+use fs2::FileExt;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
@@ -158,11 +159,13 @@ fn main() {
     let file = File::open(&filename);
     match file {
         Ok(file) => {
-            let reader = BufReader::new(file);
+            let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
+            let reader = BufReader::new(&file);
             for (_, line) in reader.lines().enumerate() {
                 let line = line.unwrap();
                 loaded_data.insert(line);
             }
+            let _ = file.unlock(); // unlock the file
         },
         _ => { },
     };
@@ -173,6 +176,7 @@ fn main() {
 
     // Save the updated data file (new_data + loaded_data) and keep the LIMIT
     if let Ok(file) = File::create(&filename) {
+        let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
         let mut writer = BufWriter::new(&file);
         let new_data_len = new_data.len();
         for arg in new_data {
@@ -193,5 +197,6 @@ fn main() {
             }
         }
         let _ = writer.flush();
+        let _ = file.unlock(); // unlock the file
     }
 }
