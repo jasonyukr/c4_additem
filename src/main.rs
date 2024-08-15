@@ -94,7 +94,7 @@ fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home
             fullarg.push_str(&arg);
         }
 
-        // Append the canonalized fullpath only if the file exists
+        // Append the canonalized fullpath only if the file/dir exists
         match fs::canonicalize(&fullarg) {
             Ok(path) => {
                 if let Some(cano_str) = path.to_str() {
