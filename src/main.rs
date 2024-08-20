@@ -117,6 +117,9 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
             fullpath.push_str(&token[1..]);
         } else if token.starts_with('/') {
             fullpath = token;
+        } else if let Some(_idx) = token.find(":/") {
+            // special case URI for scp (e.g. id@server:/root/here)
+            fullpath = token;
         } else {
             fullpath = pwd.to_string();
             fullpath.push_str("/");
@@ -129,6 +132,23 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
 }
 
 fn handle_filesystem_object(fs_object: &str, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
+
+    if let Some(_idx) = fs_object.find(":/") {
+        // special case URI for scp (e.g. id@server:/root/here)
+        if loaded_data.contains(fs_object) {
+            if let Some(first) = loaded_data.iter().next() {
+                if first == fs_object {
+                    // No reason to update the data file if the first item (most recent item)
+                    // is already the same with new item.
+                    return;
+                }
+            }
+            loaded_data.shift_remove(fs_object);
+        }
+        new_data.insert(fs_object.to_string());
+        return;
+    }
+
     match fs::canonicalize(&fs_object) {
         Ok(path) => {
             if let Some(cano_str) = path.to_str() {
