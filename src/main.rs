@@ -2,12 +2,23 @@ use fs2::FileExt;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
+use std::path::Path;
 use indexmap::IndexSet;
 
 const LIMIT: usize = 20000;
 const DATA_FILENAME: &str = ".recent.txt";
 
-fn parse_line(input: &str) -> Vec<String> {
+#[derive(PartialEq)]
+enum Command {
+    Cp,
+    Mv,
+    Scp,
+    Rm,
+    Rmdir,
+    Etc
+}
+
+fn get_line_tokens(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current_token = String::new();
     let mut in_single_quote = false;
@@ -59,104 +70,165 @@ fn parse_line(input: &str) -> Vec<String> {
     tokens
 }
 
-fn add_parsed_arguments(loaded_data: &mut IndexSet<String>, datafile: &str, home: &str, pwd: &str, input: &str, new_data: &mut IndexSet<String>) -> u32 {
-    let token_list = parse_line(input);
+fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec<String>) -> Command {
+    let tokens = get_line_tokens(input);
 
+    let mut cmd: Command = Command::Etc;
     let mut cnt = 0;
-    let mut updated = 0;
-    for arg in token_list {
+    for token in tokens {
         cnt += 1;
         if cnt == 1 {
-            if !arg.starts_with("./") && !arg.starts_with("../") && !arg.starts_with("/") && !arg.starts_with("~/") {
+            if token.eq("cp") {
+                cmd = Command::Cp;
+            } else if token.eq("mv") {
+                cmd = Command::Mv;
+            } else if token.eq("scp") {
+                cmd = Command::Scp;
+            } else if token.eq("rm") {
+                cmd = Command::Rm;
+            } else if token.eq("rmdir") {
+                cmd = Command::Rmdir;
+            }
+            if !token.starts_with("./") && !token.starts_with("../") && !token.starts_with("/") && !token.starts_with("~/") {
                 // ignore the command itself if the command doesn't start with "." "/" "~"
                 continue;
             }
         }
-        if arg.starts_with('-') {
+        if token.starts_with('-') {
+            if cmd == Command::Cp || cmd == Command::Mv {
+                if token.eq("-t") || token.starts_with("--target-directory") {
+                    // "-t, --target-directory=DIRECTORY" is special case that swaps the argument order. Ignore this case.
+                    list.clear();
+                    return cmd;
+                }
+            }
             // ignore option parameters like "--color"
             continue;
         }
-        if arg.starts_with("/dev/") {
-            // ignore the device driver access
+        if token.starts_with("/dev/null") {
+            // ignore the null device driver access
             continue;
         }
 
         // Compose the fullpath with the path expansion
-        let mut fullarg: String;
-        if arg.starts_with("~/") {
-            fullarg = home.to_string();
-            fullarg.push_str(&arg[1..]);
-        } else if arg.starts_with('/') {
-            fullarg = arg;
+        let mut fullpath: String;
+        if token.starts_with("~/") {
+            fullpath = home.to_string();
+            fullpath.push_str(&token[1..]);
+        } else if token.starts_with('/') {
+            fullpath = token;
         } else {
-            fullarg = pwd.to_string();
-            fullarg.push_str("/");
-            fullarg.push_str(&arg);
+            fullpath = pwd.to_string();
+            fullpath.push_str("/");
+            fullpath.push_str(&token);
         }
 
-        // Append the canonalized fullpath only if the file/dir exists
-        match fs::canonicalize(&fullarg) {
-            Ok(path) => {
-                if let Some(cano_str) = path.to_str() {
-                    if cano_str.eq(datafile) {
-                        // ignore the data file itself
-                        continue;
-                    }
-                    // exists() is double-checking as canonalized() is basically for existing file/dir
-                    if path.exists() {
-                        if path.is_file() {
-                            if loaded_data.contains(cano_str) {
-                                if let Some(first) = loaded_data.iter().next() {
-                                    if first == cano_str {
-                                        // No reason to update the data file if the first item (most recent item)
-                                        // is already the same with new item.
-                                        continue;
-                                    }
-                                }
-                                loaded_data.shift_remove(cano_str);
-                            }
-                            new_data.insert(cano_str.to_string());
-                            updated += 1;
-                        } else if path.as_path().is_dir() {
-                            let dir_cano_str = format!("{}/", cano_str);
-                            if loaded_data.contains(&dir_cano_str) {
-                                if let Some(first) = loaded_data.iter().next() {
-                                    if first == &dir_cano_str {
-                                        // No reason to update the data file if the first item (most recent item)
-                                        // is already the same with new item.
-                                        continue;
-                                    }
-                                }
-                                loaded_data.shift_remove(&dir_cano_str);
-                            }
-                            new_data.insert(dir_cano_str.to_string());
-                            updated += 1;
+        list.push(fullpath);
+    }
+    cmd
+}
+
+fn handle_filesystem_object(fs_object: &str, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
+    match fs::canonicalize(&fs_object) {
+        Ok(path) => {
+            if let Some(cano_str) = path.to_str() {
+                // exists() is double-checking as canonalized() is basically for existing file/dir
+                if path.exists() {
+                    if path.is_file() {
+                        if cano_str.eq(data_filename) {
+                            // ignore the data file itself
+                            return;
                         }
+                        if loaded_data.contains(cano_str) {
+                            if let Some(first) = loaded_data.iter().next() {
+                                if first == cano_str {
+                                    // No reason to update the data file if the first item (most recent item)
+                                    // is already the same with new item.
+                                    return;
+                                }
+                            }
+                            loaded_data.shift_remove(cano_str);
+                        }
+                        new_data.insert(cano_str.to_string());
+                    } else if path.as_path().is_dir() {
+                        let dir_cano_str = format!("{}/", cano_str);
+                        if loaded_data.contains(&dir_cano_str) {
+                            if let Some(first) = loaded_data.iter().next() {
+                                if first == &dir_cano_str {
+                                    // No reason to update the data file if the first item (most recent item)
+                                    // is already the same with new item.
+                                    return;
+                                }
+                            }
+                            loaded_data.shift_remove(&dir_cano_str);
+                        }
+                        new_data.insert(dir_cano_str.to_string());
                     }
                 }
-            },
-            _ => { },
+            }
+        },
+        _ => { },
+    }
+}
+
+fn update_data(cmd: Command, objects: &mut Vec<String>, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
+    let mut cmd_target_dir: String = "".to_string();
+    if (cmd == Command::Cp || cmd == Command::Mv) && objects.len() >= 2 {
+        if let Some(last) = objects.last() {
+            match fs::canonicalize(&last) {
+                Ok(path) => {
+                    if let Some(cano_str) = path.to_str() {
+                        if path.as_path().is_dir() {
+                            // If the last entry is directory for cp/mv, move the dirname string to cmd_target_dir for later processing
+                            cmd_target_dir = cano_str.to_string();
+                            objects.pop();
+                        }
+                    }
+                },
+                _ => {},
+            }
         }
     }
-    updated
+
+    for obj in objects {
+        // handle filesystem object in the list directly
+        handle_filesystem_object(obj, data_filename, loaded_data, new_data);
+
+        if !cmd_target_dir.is_empty() {
+            if let Some(leaf) = Path::new(obj).file_name() {
+                if let Some(leaf_str) = leaf.to_str() {
+                    // handle composed new pathname for cp/mv with last dir argument
+                    let composed_obj = format!("{}/{}", cmd_target_dir, leaf_str);
+                    handle_filesystem_object(&composed_obj, data_filename, loaded_data, new_data);
+                }
+            }
+        }
+    }
 }
 
 fn main() {
     let home = std::env::var("HOME").unwrap();
-    let filename = format!("{}/{}", home, DATA_FILENAME);
+    let data_filename = format!("{}/{}", home, DATA_FILENAME);
 
     let stdin = io::stdin();
     let mut lines = stdin.lock().lines();
     let pwd = lines.next().unwrap_or(Ok(String::new())).unwrap();
-    let cmd = lines.next().unwrap_or(Ok(String::new())).unwrap();
-    if pwd.len() == 0 || cmd.len() == 0 {
+    let input = lines.next().unwrap_or(Ok(String::new())).unwrap();
+    if pwd.len() == 0 || input.len() == 0 {
+        return;
+    }
+
+    // Parse argument first
+    let mut fs_objects = Vec::new();
+    let cmd = get_filesystem_object_list(&input, &home, &pwd, &mut fs_objects);
+    if fs_objects.len() == 0 {
         return;
     }
 
     // Load the data file
     let mut new_data = IndexSet::new();
     let mut loaded_data = IndexSet::new();
-    let file = File::open(&filename);
+    let file = File::open(&data_filename);
     match file {
         Ok(file) => {
             let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
@@ -170,12 +242,13 @@ fn main() {
         _ => { },
     };
 
-    if add_parsed_arguments(&mut loaded_data, &filename, &home, &pwd, &cmd, &mut new_data) == 0 || new_data.len() == 0 {
+    update_data(cmd, &mut fs_objects, &data_filename, &mut loaded_data, &mut new_data);
+    if new_data.len() == 0 {
         return;
     }
 
     // Save the updated data file (new_data + loaded_data) and keep the LIMIT
-    if let Ok(file) = File::create(&filename) {
+    if let Ok(file) = File::create(&data_filename) {
         let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
         let mut writer = BufWriter::new(&file);
         let new_data_len = new_data.len();
