@@ -10,6 +10,7 @@ const DATA_FILENAME: &str = ".recent.txt";
 
 #[derive(PartialEq)]
 enum Command {
+    Cd,
     Cp,
     Mv,
     Scp,
@@ -78,7 +79,9 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
     for token in tokens {
         cnt += 1;
         if cnt == 1 {
-            if token.eq("cp") {
+            if token.eq("cd") {
+                cmd = Command::Cd;
+            } else if token.eq("cp") {
                 cmd = Command::Cp;
             } else if token.eq("mv") {
                 cmd = Command::Mv;
@@ -95,7 +98,7 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
             }
         }
         if token.starts_with('-') {
-            if cmd == Command::Cp || cmd == Command::Mv {
+            if cmd.eq(&Command::Cp) || cmd.eq(&Command::Mv) {
                 if token.eq("-t") || token.starts_with("--target-directory") {
                     // "-t, --target-directory=DIRECTORY" is special case that swaps the argument order. Ignore this case.
                     list.clear();
@@ -131,7 +134,7 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
     cmd
 }
 
-fn handle_filesystem_object(fs_object: &str, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
+fn handle_filesystem_object(cmd: &Command, fs_object: &str, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
 
     if let Some(_idx) = fs_object.find(":/") {
         // special case URI for scp (e.g. id@server:/root/here)
@@ -171,7 +174,10 @@ fn handle_filesystem_object(fs_object: &str, data_filename: &str, loaded_data: &
                         }
                         new_data.insert(cano_str.to_string());
                     } else if path.as_path().is_dir() {
-                        let dir_cano_str = format!("{}/", cano_str);
+                        let mut dir_cano_str = format!("{}/", cano_str);
+                        if cmd.eq(&Command::Cd) {
+                            dir_cano_str.push(' '); // append space to mark the "cd" result
+                        }
                         if loaded_data.contains(&dir_cano_str) {
                             if let Some(first) = loaded_data.iter().next() {
                                 if first == &dir_cano_str {
@@ -191,9 +197,9 @@ fn handle_filesystem_object(fs_object: &str, data_filename: &str, loaded_data: &
     }
 }
 
-fn update_data(cmd: Command, objects: &mut Vec<String>, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
+fn update_data(cmd: &Command, objects: &mut Vec<String>, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
     let mut cmd_target_dir: String = "".to_string();
-    if (cmd == Command::Cp || cmd == Command::Mv) && objects.len() >= 2 {
+    if (cmd.eq(&Command::Cp) || cmd.eq(&Command::Mv)) && objects.len() >= 2 {
         if let Some(last) = objects.last() {
             match fs::canonicalize(&last) {
                 Ok(path) => {
@@ -212,14 +218,14 @@ fn update_data(cmd: Command, objects: &mut Vec<String>, data_filename: &str, loa
 
     for obj in objects {
         // handle filesystem object in the list directly
-        handle_filesystem_object(obj, data_filename, loaded_data, new_data);
+        handle_filesystem_object(cmd, obj, data_filename, loaded_data, new_data);
 
         if !cmd_target_dir.is_empty() {
             if let Some(leaf) = Path::new(obj).file_name() {
                 if let Some(leaf_str) = leaf.to_str() {
                     // handle composed new pathname for cp/mv with last dir argument
                     let composed_obj = format!("{}/{}", cmd_target_dir, leaf_str);
-                    handle_filesystem_object(&composed_obj, data_filename, loaded_data, new_data);
+                    handle_filesystem_object(cmd, &composed_obj, data_filename, loaded_data, new_data);
                 }
             }
         }
@@ -262,7 +268,7 @@ fn main() {
         _ => { },
     };
 
-    update_data(cmd, &mut fs_objects, &data_filename, &mut loaded_data, &mut new_data);
+    update_data(&cmd, &mut fs_objects, &data_filename, &mut loaded_data, &mut new_data);
     if new_data.len() == 0 {
         return;
     }
