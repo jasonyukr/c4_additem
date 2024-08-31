@@ -80,6 +80,11 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
     for token in tokens {
         cnt += 1;
         if cnt == 1 {
+            if token.eq("sudo") {
+                // ignore sudo token and continue
+                cnt = 0;
+                continue;
+            }
             if token.eq("cd") {
                 cmd = Command::Cd;
             } else if token.eq("cp") {
