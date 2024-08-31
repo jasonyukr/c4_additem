@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 indexmap = "1.9.1"
 fs2 = "0.4"
+regex = "1.9.5"

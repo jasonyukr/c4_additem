@@ -4,6 +4,7 @@ use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
 use std::path::Path;
 use indexmap::IndexSet;
+use regex::Regex;
 
 const LIMIT: usize = 20000;
 const DATA_FILENAME: &str = ".recent.txt";
@@ -75,6 +76,8 @@ fn get_line_tokens(input: &str) -> Vec<String> {
 fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec<String>) -> Command {
     let tokens = get_line_tokens(input);
 
+    let re = Regex::new(r"^.*=.*$").unwrap();
+
     let mut cmd: Command = Command::Etc;
     let mut cnt = 0;
     for token in tokens {
@@ -99,6 +102,12 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
                 cmd = Command::Rm;
             } else if token.eq("rmdir") {
                 cmd = Command::Rmdir;
+            } else {
+                if re.is_match(&token) {
+                    // ignore the temporary variable setting like KEY=VALUE
+                    cnt = 0;
+                    continue;
+                }
             }
             if !token.starts_with("./") && !token.starts_with("../") && !token.starts_with("/") && !token.starts_with("~/") {
                 // ignore the command itself if the command doesn't start with "." "/" "~"
