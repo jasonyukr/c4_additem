@@ -304,7 +304,7 @@ fn main() {
                 let line = line.unwrap();
                 loaded_data.insert(line);
             }
-            let _ = file.unlock(); // unlock the file
+            FileExt::unlock(&file).unwrap(); // unlock the file
         },
         _ => { },
     };
@@ -337,6 +337,6 @@ fn main() {
             }
         }
         let _ = writer.flush();
-        let _ = file.unlock(); // unlock the file
+        FileExt::unlock(&file).unwrap(); // unlock the file
     }
 }
