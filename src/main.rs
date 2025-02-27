@@ -2,6 +2,7 @@ use fs2::FileExt;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter};
 use std::io::Write;
+use std::env;
 use std::path::Path;
 use indexmap::IndexSet;
 
@@ -274,7 +275,11 @@ fn update_data(cmd: &Command, objects: &mut Vec<String>, data_filename: &str, lo
 }
 
 fn main() {
-    let home = std::env::var("HOME").unwrap();
+    let home = env::var("HOME").unwrap_or_else(|_| "".to_string());
+    if home.len() == 0 {
+        return;
+    }
+
     let data_filename = format!("{}/{}", home, DATA_FILENAME);
 
     let stdin = io::stdin();
