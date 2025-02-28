@@ -237,8 +237,8 @@ fn main() {
     }
 
     // Load the data file
-    let mut new_data = IndexSet::new();
-    let mut loaded_data = IndexSet::new();
+    let mut new_data = IndexSet::with_capacity(LIMIT);
+    let mut loaded_data = IndexSet::with_capacity(LIMIT);
     let file = File::open(&data_filename);
     if let Ok(file) = file {
         let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
