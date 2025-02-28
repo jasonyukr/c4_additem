@@ -14,8 +14,6 @@ enum Command {
     Cd,
     Cp,
     Mv,
-    Scp,
-    Ssh,
     Rm,
     Rmdir,
     Etc
@@ -92,10 +90,6 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
                 cmd = Command::Cp;
             } else if token.eq("mv") {
                 cmd = Command::Mv;
-            } else if token.eq("scp") {
-                cmd = Command::Scp;
-            } else if token.eq("ssh") {
-                cmd = Command::Ssh;
             } else if token.eq("rm") {
                 cmd = Command::Rm;
             } else if token.eq("rmdir") {
@@ -130,13 +124,6 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
             fullpath.push_str(&token[1..]);
         } else if token.starts_with('/') {
             fullpath = token;
-        } else if let Some(_idx) = token.find(":") {
-            // Special case URI for scp
-            //   [user@]host:[path]  or
-            //   scp://[user@]host[:port][/path]
-            fullpath = token;
-        } else if cmd == Command::Ssh {
-            fullpath = token;
         } else {
             fullpath = pwd.to_string();
             fullpath.push_str("/");
@@ -149,43 +136,6 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
 }
 
 fn handle_filesystem_object(cmd: &Command, fs_object: &str, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
-
-    if cmd.eq(&Command::Scp) {
-        if let Some(_idx) = fs_object.find(":") {
-            // special case URI for scp (e.g. id@server:/root/here)
-            let scp_entry = format!("SCP#{}", fs_object);
-            if loaded_data.contains(&scp_entry) {
-                if let Some(first) = loaded_data.iter().next() {
-                    if first == &scp_entry {
-                        // No reason to update the data file if the first item (most recent item)
-                        // is already the same with new item.
-                        return;
-                    }
-                }
-                loaded_data.shift_remove(&scp_entry);
-            }
-            new_data.insert(scp_entry.to_string());
-            return;
-        }
-        // local path parameter for scp should fall-through
-    }
-
-    if cmd.eq(&Command::Ssh) {
-        let ssh_entry = format!("SSH#{}", fs_object);
-        if loaded_data.contains(&ssh_entry) {
-            if let Some(first) = loaded_data.iter().next() {
-                if first == &ssh_entry {
-                    // No reason to update the data file if the first item (most recent item)
-                    // is already the same with new item.
-                    return;
-                }
-            }
-            loaded_data.shift_remove(&ssh_entry);
-        }
-        new_data.insert(ssh_entry.to_string());
-        return;
-    }
-
     match fs::canonicalize(&fs_object) {
         Ok(path) => {
             if let Some(cano_str) = path.to_str() {
@@ -251,11 +201,6 @@ fn update_data(cmd: &Command, objects: &mut Vec<String>, data_filename: &str, lo
                 _ => {},
             }
         }
-    }
-
-    if cmd.eq(&Command::Ssh) && objects.len() != 1 {
-        // For simplicity, we just accept the one argument case
-        return;
     }
 
     for obj in objects {
