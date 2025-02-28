@@ -6,7 +6,7 @@ use std::env;
 use std::path::Path;
 use indexmap::IndexSet;
 
-const LIMIT: usize = 20000;
+const LIMIT: usize = 5000;
 const DATA_FILENAME: &str = ".recent.txt";
 
 #[derive(PartialEq)]
@@ -136,51 +136,48 @@ fn get_filesystem_object_list(input: &str, home: &str, pwd: &str, list: &mut Vec
 }
 
 fn handle_filesystem_object(cmd: &Command, fs_object: &str, data_filename: &str, loaded_data: &mut IndexSet<String>, new_data: &mut IndexSet<String>) {
-    match fs::canonicalize(&fs_object) {
-        Ok(path) => {
-            if let Some(cano_str) = path.to_str() {
-                // exists() is double-checking as canonalized() is basically for existing file/dir
-                if path.exists() {
-                    if path.is_file() {
-                        if cano_str.eq(data_filename) {
-                            // ignore the data file itself
-                            return;
-                        }
-                        if loaded_data.contains(cano_str) {
-                            if let Some(first) = loaded_data.iter().next() {
-                                if first == cano_str {
-                                    // No reason to update the data file if the first item (most recent item)
-                                    // is already the same with new item.
-                                    return;
-                                }
-                            }
-                            loaded_data.shift_remove(cano_str);
-                        }
-                        new_data.insert(cano_str.to_string());
-                    } else if path.as_path().is_dir() {
-                        let mut dir_cano_str = format!("{}/", cano_str);
-                        if cano_str.eq("/") {
-                            dir_cano_str = format!("/");
-                        }
-                        if cmd.eq(&Command::Cd) {
-                            dir_cano_str.push(' '); // append space to mark the "cd" result
-                        }
-                        if loaded_data.contains(&dir_cano_str) {
-                            if let Some(first) = loaded_data.iter().next() {
-                                if first == &dir_cano_str {
-                                    // No reason to update the data file if the first item (most recent item)
-                                    // is already the same with new item.
-                                    return;
-                                }
-                            }
-                            loaded_data.shift_remove(&dir_cano_str);
-                        }
-                        new_data.insert(dir_cano_str.to_string());
+    if let Ok(path) = fs::canonicalize(&fs_object) {
+        if let Some(cano_str) = path.to_str() {
+            // exists() is double-checking as canonalized() is basically for existing file/dir
+            if path.exists() {
+                if path.is_file() {
+                    if cano_str.eq(data_filename) {
+                        // ignore the data file itself
+                        return;
                     }
+                    if loaded_data.contains(cano_str) {
+                        if let Some(first) = loaded_data.iter().next() {
+                            if first == cano_str {
+                                // No reason to update the data file if the first item (most recent item)
+                                // is already the same with new item.
+                                return;
+                            }
+                        }
+                        loaded_data.shift_remove(cano_str);
+                    }
+                    new_data.insert(cano_str.to_string());
+                } else if path.as_path().is_dir() {
+                    let mut dir_cano_str = format!("{}/", cano_str);
+                    if cano_str.eq("/") {
+                        dir_cano_str = format!("/");
+                    }
+                    if cmd.eq(&Command::Cd) {
+                        dir_cano_str.push(' '); // append space to mark the "cd" result
+                    }
+                    if loaded_data.contains(&dir_cano_str) {
+                        if let Some(first) = loaded_data.iter().next() {
+                            if first == &dir_cano_str {
+                                // No reason to update the data file if the first item (most recent item)
+                                // is already the same with new item.
+                                return;
+                            }
+                        }
+                        loaded_data.shift_remove(&dir_cano_str);
+                    }
+                    new_data.insert(dir_cano_str.to_string());
                 }
             }
-        },
-        _ => { },
+        }
     }
 }
 
@@ -188,17 +185,14 @@ fn update_data(cmd: &Command, objects: &mut Vec<String>, data_filename: &str, lo
     let mut cmd_target_dir: String = "".to_string();
     if (cmd.eq(&Command::Cp) || cmd.eq(&Command::Mv)) && objects.len() >= 2 {
         if let Some(last) = objects.last() {
-            match fs::canonicalize(&last) {
-                Ok(path) => {
-                    if let Some(cano_str) = path.to_str() {
-                        if path.as_path().is_dir() {
-                            // If the last entry is directory for cp/mv, move the dirname string to cmd_target_dir for later processing
-                            cmd_target_dir = cano_str.to_string();
-                            objects.pop();
-                        }
+            if let Ok(path) = fs::canonicalize(&last) {
+                if let Some(cano_str) = path.to_str() {
+                    if path.as_path().is_dir() {
+                        // If the last entry is directory for cp/mv, move the dirname string to cmd_target_dir for later processing
+                        cmd_target_dir = cano_str.to_string();
+                        objects.pop();
                     }
-                },
-                _ => {},
+                }
             }
         }
     }
@@ -246,18 +240,15 @@ fn main() {
     let mut new_data = IndexSet::new();
     let mut loaded_data = IndexSet::new();
     let file = File::open(&data_filename);
-    match file {
-        Ok(file) => {
-            let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
-            let reader = BufReader::new(&file);
-            for (_, line) in reader.lines().enumerate() {
-                let line = line.unwrap();
-                loaded_data.insert(line);
-            }
-            FileExt::unlock(&file).unwrap(); // unlock the file
-        },
-        _ => { },
-    };
+    if let Ok(file) = file {
+        let _ = file.lock_exclusive(); // locks the file, blocking if the file is currently locked
+        let reader = BufReader::new(&file);
+        for (_, line) in reader.lines().enumerate() {
+            let line = line.unwrap();
+            loaded_data.insert(line);
+        }
+        FileExt::unlock(&file).unwrap(); // unlock the file
+    }
 
     update_data(&cmd, &mut fs_objects, &data_filename, &mut loaded_data, &mut new_data);
     if new_data.len() == 0 {
