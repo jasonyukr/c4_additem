@@ -221,10 +221,21 @@ fn main() {
 
     let data_filename = format!("{}/{}", home, DATA_FILENAME);
 
-    let stdin = io::stdin();
-    let mut lines = stdin.lock().lines();
-    let pwd = lines.next().unwrap_or(Ok(String::new())).unwrap();
-    let input = lines.next().unwrap_or(Ok(String::new())).unwrap();
+    let input;
+    let pwd;
+    let args = env::args();
+    if args.len() >= 2 {
+        // argument mode provides "input" line only
+        let args: Vec<String> = args.skip(1).collect();
+        pwd = env::current_dir().map_or(String::from(""), |path| path.display().to_string());
+        input = args.join(" ");
+    } else {
+        // stdin mode provides "pwd" and "input" (two lines)
+        let stdin = io::stdin();
+        let mut lines = stdin.lock().lines();
+        pwd = lines.next().unwrap_or(Ok(String::new())).unwrap();
+        input = lines.next().unwrap_or(Ok(String::new())).unwrap();
+    }
     if pwd.len() == 0 || input.len() == 0 {
         return;
     }
